@@ -298,29 +298,65 @@ with tabs[1]:
             st.rerun()
 
 with tabs[2]:
-    with st.form("history"):
-        c1,c2,c3,c4 = st.columns(4)
-        d = c1.date_input("Effective Date", value=date.today())
-        nb = c2.number_input("NALCO Base", value=float(s["nalco_base"]), step=0.5)
-        ie = c3.number_input("IE-07", value=float(s["ie07"]), step=0.5)
-        lme = c4.number_input("LME US$/MT", value=float(h["lme"].dropna().iloc[-1]) if h["lme"].notna().any() else 0.0)
-        c5,c6,c7 = st.columns(3)
-        fx = c5.number_input("USD/INR", value=float(h["usd_inr"].dropna().iloc[-1]) if h["usd_inr"].notna().any() else 0.0)
-        reason = c6.text_input("Reason / Circular")
-        source = c7.text_input("Source / Reference")
-        entered = st.text_input("Entered By")
-        if st.form_submit_button("Add Revision", type="primary"):
-            c = conn()
-            c.execute("""
-            INSERT INTO rate_history(effective_date,nalco_base,ie07,lme,usd_inr,reason,source_ref,entered_by,created_at)
-            VALUES(?,?,?,?,?,?,?,?,?)
-            """,(d.isoformat(),nb,ie,lme,fx,reason,source,entered,datetime.now().isoformat(timespec="seconds")))
-            c.commit(); c.close()
-            st.success("Revision added.")
-            st.rerun()
+    st.subheader("NALCO / IE-07 Rate History")
+    add_tab, delete_tab = st.tabs(["Add Revision", "Delete Revision"])
+
+    with add_tab:
+        with st.form("history"):
+            c1,c2,c3,c4 = st.columns(4)
+            d = c1.date_input("Effective Date", value=date.today())
+            nb = c2.number_input("NALCO Base", value=float(s["nalco_base"]), step=0.5)
+            ie = c3.number_input("IE-07", value=float(s["ie07"]), step=0.5)
+            lme = c4.number_input("LME US$/MT", value=float(h["lme"].dropna().iloc[-1]) if h["lme"].notna().any() else 0.0)
+            c5,c6,c7 = st.columns(3)
+            fx = c5.number_input("USD/INR", value=float(h["usd_inr"].dropna().iloc[-1]) if h["usd_inr"].notna().any() else 0.0)
+            reason = c6.text_input("Reason / Circular")
+            source = c7.text_input("Source / Reference")
+            entered = st.text_input("Entered By")
+            if st.form_submit_button("Add Revision", type="primary"):
+                c = conn()
+                c.execute("""
+                INSERT INTO rate_history(effective_date,nalco_base,ie07,lme,usd_inr,reason,source_ref,entered_by,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?)
+                """,(d.isoformat(),nb,ie,lme,fx,reason,source,entered,datetime.now().isoformat(timespec="seconds")))
+                c.commit(); c.close()
+                st.success("Revision added.")
+                st.rerun()
+
+    with delete_tab:
+        if h.empty:
+            st.info("No revision records are available.")
+        else:
+            delete_options = {}
+            for _, row in h.sort_values("effective_date", ascending=False).iterrows():
+                label = (f'{row["effective_date"].date()} | NALCO ₹{row["nalco_base"]:.2f} | '
+                         f'IE-07 ₹{row["ie07"]:.2f} | Composite ₹{row["composite"]:.2f} | ID {int(row["id"])}')
+                delete_options[label] = int(row["id"])
+            selected_label = st.selectbox("Select the revision to delete", list(delete_options.keys()))
+            selected_id = delete_options[selected_label]
+            selected_row = h.loc[h["id"] == selected_id].iloc[0]
+            st.warning(
+                f"Selected record:
+
+**Date:** {selected_row['effective_date'].date()}  
+"
+                f"**NALCO:** ₹{selected_row['nalco_base']:.2f}/kg  
+"
+                f"**IE-07:** ₹{selected_row['ie07']:.2f}/kg  
+"
+                f"**Composite:** ₹{selected_row['composite']:.2f}/kg"
+            )
+            confirm_delete = st.checkbox("I confirm that this revision should be permanently deleted.")
+            if st.button("Delete Selected Revision", type="primary", disabled=not confirm_delete):
+                c = conn()
+                c.execute("DELETE FROM rate_history WHERE id=?", (selected_id,))
+                c.commit(); c.close()
+                st.success("Revision deleted successfully.")
+                st.rerun()
+
     show = h.copy()
     show["effective_date"] = show["effective_date"].dt.date
-    st.dataframe(show[["effective_date","nalco_base","ie07","composite","change","lme","usd_inr","reason","source_ref","entered_by"]],
+    st.dataframe(show[["id","effective_date","nalco_base","ie07","composite","change","lme","usd_inr","reason","source_ref","entered_by"]],
                  use_container_width=True, hide_index=True)
 
 with tabs[3]:
