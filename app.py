@@ -33,6 +33,63 @@ st.markdown(
     .buy {background:#e2f0d9;border-left:7px solid #70ad47;padding:18px;border-radius:10px;}
     .wait {background:#f4cccc;border-left:7px solid #c00000;padding:18px;border-radius:10px;}
     .hold {background:#fff2cc;border-left:7px solid #ffc000;padding:18px;border-radius:10px;}
+
+    .compact-cell {
+        display:flex;
+        align-items:center;
+        min-height:30px;
+        padding:3px 6px;
+        border-radius:6px;
+        font-size:0.92rem;
+        line-height:1.1;
+        white-space:normal;
+    }
+    .cell-up {
+        background:#d9ead3;
+        color:#166534;
+        font-weight:700;
+        border:1px solid #b6d7a8;
+    }
+    .cell-down {
+        background:#f4cccc;
+        color:#991b1b;
+        font-weight:700;
+        border:1px solid #e6b8af;
+    }
+    .cell-flat {
+        background:#fff2cc;
+        color:#7f6000;
+        font-weight:700;
+        border:1px solid #f1d98a;
+    }
+    .cell-latest {
+        background:#fff2cc;
+        color:#7f6000;
+        font-weight:700;
+        border:1px solid #f1d98a;
+    }
+    .cell-best {
+        background:#d9ead3;
+        color:#166534;
+        font-weight:700;
+        border:1px solid #93c47d;
+    }
+    .cell-worst {
+        background:#f4cccc;
+        color:#991b1b;
+        font-weight:700;
+        border:1px solid #e06666;
+    }
+    div[data-testid="stHorizontalBlock"] {
+        gap:0.35rem;
+    }
+    div.stButton > button {
+        min-height:30px;
+        height:30px;
+        padding:0.1rem 0.45rem;
+        line-height:1;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -41,6 +98,12 @@ st.markdown(
 
 def get_conn():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
+
+
+def cell_html(text, css_class=""):
+    return (
+        f'<div class="compact-cell {css_class}">{text}</div>'
+    )
 
 
 def init_db():
@@ -903,16 +966,65 @@ Selected record:
         row_id = int(row["id"])
         cols = st.columns([0.6, 1.15, 1, 0.8, 1, 0.8, 0.8, 1.6, 1.8, 1.2, 1.4])
 
-        cols[0].write(row_id)
-        cols[1].write(str(row["effective_date"].date()))
-        cols[2].write(f"₹{row['nalco_base']:.2f}")
-        cols[3].write(f"₹{row['ie07']:.2f}")
-        cols[4].write(f"₹{row['composite']:.2f}")
-        cols[5].write(f"₹{row['change']:.2f}")
-        cols[6].write(f"{row['lme']:.2f}")
-        cols[7].write(str(row["reason"] or ""))
-        cols[8].write(str(row["source_ref"] or ""))
-        cols[9].write(str(row["entered_by"] or ""))
+        latest_id = int(
+            display_history.sort_values(
+                ["effective_date", "id"]
+            ).iloc[-1]["id"]
+        )
+        change_value = float(row["change"])
+        if change_value > 0:
+            movement_class = "cell-up"
+            change_text = f"▲ ₹{change_value:.2f}"
+        elif change_value < 0:
+            movement_class = "cell-down"
+            change_text = f"▼ ₹{abs(change_value):.2f}"
+        else:
+            movement_class = "cell-flat"
+            change_text = "→ ₹0.00"
+
+        nalco_class = movement_class
+        latest_class = "cell-latest" if row_id == latest_id else ""
+
+        cols[0].markdown(
+            cell_html(str(row_id), latest_class),
+            unsafe_allow_html=True,
+        )
+        cols[1].markdown(
+            cell_html(str(row["effective_date"].date()), latest_class),
+            unsafe_allow_html=True,
+        )
+        cols[2].markdown(
+            cell_html(f"₹{row['nalco_base']:.2f}", nalco_class),
+            unsafe_allow_html=True,
+        )
+        cols[3].markdown(
+            cell_html(f"₹{row['ie07']:.2f}"),
+            unsafe_allow_html=True,
+        )
+        cols[4].markdown(
+            cell_html(f"₹{row['composite']:.2f}", movement_class),
+            unsafe_allow_html=True,
+        )
+        cols[5].markdown(
+            cell_html(change_text, movement_class),
+            unsafe_allow_html=True,
+        )
+        cols[6].markdown(
+            cell_html(f"{row['lme']:.2f}"),
+            unsafe_allow_html=True,
+        )
+        cols[7].markdown(
+            cell_html(str(row["reason"] or "")),
+            unsafe_allow_html=True,
+        )
+        cols[8].markdown(
+            cell_html(str(row["source_ref"] or "")),
+            unsafe_allow_html=True,
+        )
+        cols[9].markdown(
+            cell_html(str(row["entered_by"] or "")),
+            unsafe_allow_html=True,
+        )
 
         edit_col, delete_col = cols[10].columns(2)
 
@@ -1051,7 +1163,7 @@ Selected record:
                     st.session_state.pop("delete_rate_id", None)
                     st.rerun()
 
-        st.divider()
+        st.markdown("<hr style=\"margin:4px 0\">", unsafe_allow_html=True)
 
 with tabs[3]:
     st.subheader("Automatically Generated Weekly Forecast")
@@ -1163,14 +1275,52 @@ with tabs[4]:
         supplier_id = int(row["id"])
         cols = st.columns([0.6, 1.5, 1, 0.8, 0.9, 0.9, 1.25, 1.25, 1.4])
 
-        cols[0].write(supplier_id)
-        cols[1].write(str(row["supplier"]))
-        cols[2].write(f"₹{row['quoted_base']:.2f}")
-        cols[3].write(f"₹{row['ie07']:.2f}")
-        cols[4].write(f"₹{row['freight']:.2f}")
-        cols[5].write(f"₹{row['other']:.2f}")
-        cols[6].write(f"₹{row['Landed Before GST']:.2f}")
-        cols[7].write(f"₹{row['Landed incl. GST']:.2f}")
+        min_landed = float(supplier_view["Landed incl. GST"].min())
+        max_landed = float(supplier_view["Landed incl. GST"].max())
+        landed_value = float(row["Landed incl. GST"])
+
+        if landed_value == min_landed:
+            landed_class = "cell-best"
+            supplier_text = f"★ {row['supplier']}"
+        elif landed_value == max_landed and max_landed != min_landed:
+            landed_class = "cell-worst"
+            supplier_text = str(row["supplier"])
+        else:
+            landed_class = ""
+            supplier_text = str(row["supplier"])
+
+        cols[0].markdown(
+            cell_html(str(supplier_id)),
+            unsafe_allow_html=True,
+        )
+        cols[1].markdown(
+            cell_html(supplier_text, landed_class),
+            unsafe_allow_html=True,
+        )
+        cols[2].markdown(
+            cell_html(f"₹{row['quoted_base']:.2f}"),
+            unsafe_allow_html=True,
+        )
+        cols[3].markdown(
+            cell_html(f"₹{row['ie07']:.2f}"),
+            unsafe_allow_html=True,
+        )
+        cols[4].markdown(
+            cell_html(f"₹{row['freight']:.2f}"),
+            unsafe_allow_html=True,
+        )
+        cols[5].markdown(
+            cell_html(f"₹{row['other']:.2f}"),
+            unsafe_allow_html=True,
+        )
+        cols[6].markdown(
+            cell_html(f"₹{row['Landed Before GST']:.2f}", landed_class),
+            unsafe_allow_html=True,
+        )
+        cols[7].markdown(
+            cell_html(f"₹{row['Landed incl. GST']:.2f}", landed_class),
+            unsafe_allow_html=True,
+        )
 
         edit_col, delete_col = cols[8].columns(2)
 
@@ -1294,7 +1444,7 @@ with tabs[4]:
                     st.session_state.pop("delete_supplier_id", None)
                     st.rerun()
 
-        st.divider()
+        st.markdown("<hr style=\"margin:4px 0\">", unsafe_allow_html=True)
 
 with tabs[5]:
     st.subheader("Export Management Data")
