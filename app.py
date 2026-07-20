@@ -855,9 +855,11 @@ Selected record:
 
     st.divider()
 
+    st.subheader("Rate History Records")
     search_text = st.text_input(
         "Search Rate History",
         placeholder="Search date, reason, reference or entered-by name",
+        key="rate_search",
     )
 
     display_history = history.copy()
@@ -887,29 +889,169 @@ Selected record:
         )
         display_history = display_history.loc[mask]
 
-    display_history["effective_date"] = (
-        display_history["effective_date"].dt.date
-    )
+    header_cols = st.columns([0.6, 1.15, 1, 0.8, 1, 0.8, 0.8, 1.6, 1.8, 1.2, 1.4])
+    headers = [
+        "ID", "Date", "NALCO", "IE-07", "Composite",
+        "Change", "LME", "Reason", "Reference", "Entered By", "Actions"
+    ]
+    for col, title in zip(header_cols, headers):
+        col.markdown(f"**{title}**")
 
-    st.dataframe(
-        display_history[
-            [
-                "id",
-                "effective_date",
-                "nalco_base",
-                "ie07",
-                "composite",
-                "change",
-                "lme",
-                "usd_inr",
-                "reason",
-                "source_ref",
-                "entered_by",
-            ]
-        ],
-        use_container_width=True,
-        hide_index=True,
-    )
+    for _, row in display_history.sort_values(
+        ["effective_date", "id"], ascending=[False, False]
+    ).iterrows():
+        row_id = int(row["id"])
+        cols = st.columns([0.6, 1.15, 1, 0.8, 1, 0.8, 0.8, 1.6, 1.8, 1.2, 1.4])
+
+        cols[0].write(row_id)
+        cols[1].write(str(row["effective_date"].date()))
+        cols[2].write(f"₹{row['nalco_base']:.2f}")
+        cols[3].write(f"₹{row['ie07']:.2f}")
+        cols[4].write(f"₹{row['composite']:.2f}")
+        cols[5].write(f"₹{row['change']:.2f}")
+        cols[6].write(f"{row['lme']:.2f}")
+        cols[7].write(str(row["reason"] or ""))
+        cols[8].write(str(row["source_ref"] or ""))
+        cols[9].write(str(row["entered_by"] or ""))
+
+        edit_col, delete_col = cols[10].columns(2)
+
+        if edit_col.button(
+            "✏️",
+            key=f"rate_edit_button_{row_id}",
+            help="Edit this revision",
+        ):
+            st.session_state["edit_rate_id"] = row_id
+
+        if delete_col.button(
+            "🗑️",
+            key=f"rate_delete_button_{row_id}",
+            help="Delete this revision",
+        ):
+            st.session_state["delete_rate_id"] = row_id
+
+        if st.session_state.get("edit_rate_id") == row_id:
+            with st.container(border=True):
+                st.markdown(f"### Edit Rate Revision #{row_id}")
+                with st.form(f"inline_edit_rate_{row_id}"):
+                    c1, c2, c3, c4 = st.columns(4)
+                    new_date = c1.date_input(
+                        "Effective Date",
+                        value=row["effective_date"].date(),
+                        key=f"rate_date_{row_id}",
+                    )
+                    new_nalco = c2.number_input(
+                        "NALCO Base",
+                        value=float(row["nalco_base"]),
+                        step=0.5,
+                        key=f"rate_nalco_{row_id}",
+                    )
+                    new_ie07 = c3.number_input(
+                        "IE-07",
+                        value=float(row["ie07"]),
+                        step=0.5,
+                        key=f"rate_ie07_{row_id}",
+                    )
+                    new_lme = c4.number_input(
+                        "LME US$/MT",
+                        value=float(row["lme"] or 0),
+                        key=f"rate_lme_{row_id}",
+                    )
+
+                    c5, c6, c7 = st.columns(3)
+                    new_usd = c5.number_input(
+                        "USD/INR",
+                        value=float(row["usd_inr"] or 0),
+                        key=f"rate_usd_{row_id}",
+                    )
+                    new_reason = c6.text_input(
+                        "Reason / Circular",
+                        value=str(row["reason"] or ""),
+                        key=f"rate_reason_{row_id}",
+                    )
+                    new_source = c7.text_input(
+                        "Source / Reference",
+                        value=str(row["source_ref"] or ""),
+                        key=f"rate_source_{row_id}",
+                    )
+                    new_entered_by = st.text_input(
+                        "Entered By",
+                        value=str(row["entered_by"] or ""),
+                        key=f"rate_entered_by_{row_id}",
+                    )
+
+                    save_col, cancel_col = st.columns(2)
+                    save_clicked = save_col.form_submit_button(
+                        "Save Changes",
+                        type="primary",
+                    )
+                    cancel_clicked = cancel_col.form_submit_button("Cancel")
+
+                    if save_clicked:
+                        conn = get_conn()
+                        conn.execute(
+                            """
+                            UPDATE rate_history SET
+                                effective_date=?,nalco_base=?,ie07=?,lme=?,
+                                usd_inr=?,reason=?,source_ref=?,entered_by=?
+                            WHERE id=?
+                            """,
+                            (
+                                new_date.isoformat(),
+                                new_nalco,
+                                new_ie07,
+                                new_lme,
+                                new_usd,
+                                new_reason,
+                                new_source,
+                                new_entered_by,
+                                row_id,
+                            ),
+                        )
+                        conn.commit()
+                        conn.close()
+                        st.session_state.pop("edit_rate_id", None)
+                        st.success("Rate revision updated.")
+                        st.rerun()
+
+                    if cancel_clicked:
+                        st.session_state.pop("edit_rate_id", None)
+                        st.rerun()
+
+        if st.session_state.get("delete_rate_id") == row_id:
+            with st.container(border=True):
+                st.error(
+                    f"Delete revision #{row_id}: "
+                    f"{row['effective_date'].date()} | "
+                    f"NALCO ₹{row['nalco_base']:.2f} | "
+                    f"IE-07 ₹{row['ie07']:.2f}?"
+                )
+                confirm_col, cancel_col = st.columns(2)
+
+                if confirm_col.button(
+                    "Confirm Delete",
+                    type="primary",
+                    key=f"confirm_rate_delete_{row_id}",
+                ):
+                    conn = get_conn()
+                    conn.execute(
+                        "DELETE FROM rate_history WHERE id=?",
+                        (row_id,),
+                    )
+                    conn.commit()
+                    conn.close()
+                    st.session_state.pop("delete_rate_id", None)
+                    st.success("Rate revision deleted.")
+                    st.rerun()
+
+                if cancel_col.button(
+                    "Cancel",
+                    key=f"cancel_rate_delete_{row_id}",
+                ):
+                    st.session_state.pop("delete_rate_id", None)
+                    st.rerun()
+
+        st.divider()
 
 with tabs[3]:
     st.subheader("Automatically Generated Weekly Forecast")
@@ -992,11 +1134,167 @@ with tabs[4]:
         * (1 + settings["gst"] / 100)
     )
 
-    st.dataframe(
-        supplier_view,
-        use_container_width=True,
-        hide_index=True,
+    st.subheader("Supplier Records")
+    supplier_search = st.text_input(
+        "Search Supplier",
+        placeholder="Enter supplier name",
+        key="supplier_search",
     )
+
+    if supplier_search.strip():
+        supplier_view = supplier_view[
+            supplier_view["supplier"]
+            .fillna("")
+            .str.lower()
+            .str.contains(supplier_search.strip().lower(), na=False)
+        ]
+
+    header_cols = st.columns([0.6, 1.5, 1, 0.8, 0.9, 0.9, 1.25, 1.25, 1.4])
+    headers = [
+        "ID", "Supplier", "Base", "IE-07", "Freight",
+        "Other", "Before GST", "Incl. GST", "Actions"
+    ]
+    for col, title in zip(header_cols, headers):
+        col.markdown(f"**{title}**")
+
+    for _, row in supplier_view.sort_values(
+        ["supplier", "id"]
+    ).iterrows():
+        supplier_id = int(row["id"])
+        cols = st.columns([0.6, 1.5, 1, 0.8, 0.9, 0.9, 1.25, 1.25, 1.4])
+
+        cols[0].write(supplier_id)
+        cols[1].write(str(row["supplier"]))
+        cols[2].write(f"₹{row['quoted_base']:.2f}")
+        cols[3].write(f"₹{row['ie07']:.2f}")
+        cols[4].write(f"₹{row['freight']:.2f}")
+        cols[5].write(f"₹{row['other']:.2f}")
+        cols[6].write(f"₹{row['Landed Before GST']:.2f}")
+        cols[7].write(f"₹{row['Landed incl. GST']:.2f}")
+
+        edit_col, delete_col = cols[8].columns(2)
+
+        if edit_col.button(
+            "✏️",
+            key=f"supplier_edit_button_{supplier_id}",
+            help="Edit supplier quote",
+        ):
+            st.session_state["edit_supplier_id"] = supplier_id
+
+        if delete_col.button(
+            "🗑️",
+            key=f"supplier_delete_button_{supplier_id}",
+            help="Delete supplier quote",
+        ):
+            st.session_state["delete_supplier_id"] = supplier_id
+
+        if st.session_state.get("edit_supplier_id") == supplier_id:
+            with st.container(border=True):
+                st.markdown(f"### Edit Supplier Quote #{supplier_id}")
+                with st.form(f"inline_edit_supplier_{supplier_id}"):
+                    c1, c2, c3, c4, c5 = st.columns(5)
+                    new_name = c1.text_input(
+                        "Supplier",
+                        value=str(row["supplier"]),
+                        key=f"supplier_name_{supplier_id}",
+                    )
+                    new_base = c2.number_input(
+                        "Quoted Base",
+                        value=float(row["quoted_base"]),
+                        step=0.5,
+                        key=f"supplier_base_{supplier_id}",
+                    )
+                    new_ie07 = c3.number_input(
+                        "IE-07",
+                        value=float(row["ie07"]),
+                        step=0.5,
+                        key=f"supplier_ie07_{supplier_id}",
+                    )
+                    new_freight = c4.number_input(
+                        "Freight",
+                        value=float(row["freight"]),
+                        step=0.1,
+                        key=f"supplier_freight_{supplier_id}",
+                    )
+                    new_other = c5.number_input(
+                        "Other Charges",
+                        value=float(row["other"]),
+                        step=0.1,
+                        key=f"supplier_other_{supplier_id}",
+                    )
+
+                    save_col, cancel_col = st.columns(2)
+                    save_clicked = save_col.form_submit_button(
+                        "Save Changes",
+                        type="primary",
+                    )
+                    cancel_clicked = cancel_col.form_submit_button("Cancel")
+
+                    if save_clicked:
+                        if not new_name.strip():
+                            st.error("Supplier name cannot be blank.")
+                        else:
+                            conn = get_conn()
+                            conn.execute(
+                                """
+                                UPDATE suppliers SET
+                                    supplier=?,quoted_base=?,ie07=?,
+                                    freight=?,other=?,updated_at=?
+                                WHERE id=?
+                                """,
+                                (
+                                    new_name.strip(),
+                                    new_base,
+                                    new_ie07,
+                                    new_freight,
+                                    new_other,
+                                    datetime.now().isoformat(timespec="seconds"),
+                                    supplier_id,
+                                ),
+                            )
+                            conn.commit()
+                            conn.close()
+                            st.session_state.pop("edit_supplier_id", None)
+                            st.success("Supplier quote updated.")
+                            st.rerun()
+
+                    if cancel_clicked:
+                        st.session_state.pop("edit_supplier_id", None)
+                        st.rerun()
+
+        if st.session_state.get("delete_supplier_id") == supplier_id:
+            with st.container(border=True):
+                st.error(
+                    f"Delete supplier quote #{supplier_id}: "
+                    f"{row['supplier']} | "
+                    f"Landed incl. GST ₹{row['Landed incl. GST']:.2f}?"
+                )
+                confirm_col, cancel_col = st.columns(2)
+
+                if confirm_col.button(
+                    "Confirm Delete",
+                    type="primary",
+                    key=f"confirm_supplier_delete_{supplier_id}",
+                ):
+                    conn = get_conn()
+                    conn.execute(
+                        "DELETE FROM suppliers WHERE id=?",
+                        (supplier_id,),
+                    )
+                    conn.commit()
+                    conn.close()
+                    st.session_state.pop("delete_supplier_id", None)
+                    st.success("Supplier quote deleted.")
+                    st.rerun()
+
+                if cancel_col.button(
+                    "Cancel",
+                    key=f"cancel_supplier_delete_{supplier_id}",
+                ):
+                    st.session_state.pop("delete_supplier_id", None)
+                    st.rerun()
+
+        st.divider()
 
 with tabs[5]:
     st.subheader("Export Management Data")
