@@ -15,130 +15,173 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown("""
-<style>
-.block-container {padding-top: 1.1rem; padding-bottom: 2rem;}
-.titlebar {
-    background: linear-gradient(90deg,#17365D,#2F75B5);
-    color:white; padding:18px 22px; border-radius:12px;
-    font-size:28px; font-weight:700; margin-bottom:16px;
-}
-.kpi {border:1px solid #d9e2f3; border-radius:12px; padding:15px; background:#f8fbff;}
-.kpi-label {font-size:13px;color:#555;}
-.kpi-value {font-size:25px;font-weight:700;color:#17365D;}
-.buy {background:#e2f0d9;border-left:7px solid #70ad47;padding:18px;border-radius:10px;}
-.wait {background:#f4cccc;border-left:7px solid #c00000;padding:18px;border-radius:10px;}
-.hold {background:#fff2cc;border-left:7px solid #ffc000;padding:18px;border-radius:10px;}
-</style>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <style>
+    .block-container {padding-top: 1rem; padding-bottom: 2rem;}
+    .titlebar {
+        background: linear-gradient(90deg,#17365D,#2F75B5);
+        color:white; padding:18px 22px; border-radius:12px;
+        font-size:28px; font-weight:700; margin-bottom:16px;
+    }
+    .kpi {
+        border:1px solid #d9e2f3; border-radius:12px;
+        padding:15px; background:#f8fbff;
+    }
+    .kpi-label {font-size:13px;color:#555;}
+    .kpi-value {font-size:25px;font-weight:700;color:#17365D;}
+    .buy {background:#e2f0d9;border-left:7px solid #70ad47;padding:18px;border-radius:10px;}
+    .wait {background:#f4cccc;border-left:7px solid #c00000;padding:18px;border-radius:10px;}
+    .hold {background:#fff2cc;border-left:7px solid #ffc000;padding:18px;border-radius:10px;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
-def conn():
+def get_conn():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 
 def init_db():
-    c = conn()
-    cur = c.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS settings (
-        id INTEGER PRIMARY KEY CHECK(id=1),
-        nalco_base REAL DEFAULT 330,
-        ie07 REAL DEFAULT 0,
-        freight REAL DEFAULT 4.5,
-        handling REAL DEFAULT 1.5,
-        gst REAL DEFAULT 18,
-        monthly_requirement REAL DEFAULT 25000,
-        current_stock REAL DEFAULT 6000,
-        safety_stock REAL DEFAULT 3500,
-        open_po REAL DEFAULT 5000,
-        min_cover REAL DEFAULT 10,
-        comfort_cover REAL DEFAULT 25,
-        max_booking_pct REAL DEFAULT 70,
-        forecast_trigger REAL DEFAULT 3
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS settings (
+            id INTEGER PRIMARY KEY CHECK(id=1),
+            nalco_base REAL DEFAULT 330,
+            ie07 REAL DEFAULT 0,
+            freight REAL DEFAULT 4.5,
+            handling REAL DEFAULT 1.5,
+            gst REAL DEFAULT 18,
+            monthly_requirement REAL DEFAULT 25000,
+            current_stock REAL DEFAULT 6000,
+            safety_stock REAL DEFAULT 3500,
+            open_po REAL DEFAULT 5000,
+            min_cover REAL DEFAULT 10,
+            comfort_cover REAL DEFAULT 25,
+            max_booking_pct REAL DEFAULT 70,
+            forecast_trigger REAL DEFAULT 3
+        )
+        """
     )
-    """)
     cur.execute("INSERT OR IGNORE INTO settings(id) VALUES(1)")
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS rate_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        effective_date TEXT,
-        nalco_base REAL,
-        ie07 REAL,
-        lme REAL,
-        usd_inr REAL,
-        reason TEXT,
-        source_ref TEXT,
-        entered_by TEXT,
-        created_at TEXT
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS rate_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            effective_date TEXT NOT NULL,
+            nalco_base REAL NOT NULL,
+            ie07 REAL NOT NULL DEFAULT 0,
+            lme REAL DEFAULT 0,
+            usd_inr REAL DEFAULT 0,
+            reason TEXT DEFAULT '',
+            source_ref TEXT DEFAULT '',
+            entered_by TEXT DEFAULT '',
+            created_at TEXT NOT NULL
+        )
+        """
     )
-    """)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS suppliers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        supplier TEXT,
-        quoted_base REAL,
-        ie07 REAL,
-        freight REAL,
-        other REAL,
-        updated_at TEXT
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS suppliers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            supplier TEXT NOT NULL,
+            quoted_base REAL NOT NULL,
+            ie07 REAL NOT NULL DEFAULT 0,
+            freight REAL NOT NULL DEFAULT 0,
+            other REAL NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        )
+        """
     )
-    """)
 
     if cur.execute("SELECT COUNT(*) FROM rate_history").fetchone()[0] == 0:
         sample = [
-            ("2026-04-01",318,0,2850,83.2,"Opening sample","Replace with actual circular","System"),
-            ("2026-04-15",322,0,2910,83.4,"Market increase","Replace with actual circular","System"),
-            ("2026-05-01",326,0,2980,83.6,"LME strengthening","Replace with actual circular","System"),
-            ("2026-05-16",331,0,3050,83.8,"Supply concern","Replace with actual circular","System"),
-            ("2026-06-01",336,0,3120,84.0,"International increase","Replace with actual circular","System"),
-            ("2026-06-16",335,0,3090,84.1,"Minor correction","Replace with actual circular","System"),
-            ("2026-07-01",330,0,3030,84.2,"Sample July rate","Replace with actual circular","System"),
-            ("2026-07-16",330,0,3060,84.3,"Sample no change","Replace with actual circular","System"),
+            ("2026-04-01", 318, 0, 2850, 83.2, "Opening sample", "Replace with actual circular", "System"),
+            ("2026-04-15", 322, 0, 2910, 83.4, "Market increase", "Replace with actual circular", "System"),
+            ("2026-05-01", 326, 0, 2980, 83.6, "LME strengthening", "Replace with actual circular", "System"),
+            ("2026-05-16", 331, 0, 3050, 83.8, "Supply concern", "Replace with actual circular", "System"),
+            ("2026-06-01", 336, 0, 3120, 84.0, "International increase", "Replace with actual circular", "System"),
+            ("2026-06-16", 335, 0, 3090, 84.1, "Minor correction", "Replace with actual circular", "System"),
+            ("2026-07-01", 330, 0, 3030, 84.2, "Sample July rate", "Replace with actual circular", "System"),
+            ("2026-07-16", 330, 0, 3060, 84.3, "Sample no change", "Replace with actual circular", "System"),
         ]
-        cur.executemany("""
-        INSERT INTO rate_history
-        (effective_date,nalco_base,ie07,lme,usd_inr,reason,source_ref,entered_by,created_at)
-        VALUES(?,?,?,?,?,?,?,?,?)
-        """, [(*r, datetime.now().isoformat(timespec="seconds")) for r in sample])
+        cur.executemany(
+            """
+            INSERT INTO rate_history(
+                effective_date,nalco_base,ie07,lme,usd_inr,
+                reason,source_ref,entered_by,created_at
+            )
+            VALUES(?,?,?,?,?,?,?,?,?)
+            """,
+            [(*row, datetime.now().isoformat(timespec="seconds")) for row in sample],
+        )
 
     if cur.execute("SELECT COUNT(*) FROM suppliers").fetchone()[0] == 0:
         sample_suppliers = [
-            ("Supplier A",330,0,4.5,1.5),
-            ("Supplier B",331,0,3.5,1.0),
-            ("Supplier C",329,0,6.0,1.2),
+            ("Supplier A", 330, 0, 4.5, 1.5),
+            ("Supplier B", 331, 0, 3.5, 1.0),
+            ("Supplier C", 329, 0, 6.0, 1.2),
         ]
-        cur.executemany("""
-        INSERT INTO suppliers(supplier,quoted_base,ie07,freight,other,updated_at)
-        VALUES(?,?,?,?,?,?)
-        """, [(*r, datetime.now().isoformat(timespec="seconds")) for r in sample_suppliers])
+        cur.executemany(
+            """
+            INSERT INTO suppliers(
+                supplier,quoted_base,ie07,freight,other,updated_at
+            )
+            VALUES(?,?,?,?,?,?)
+            """,
+            [(*row, datetime.now().isoformat(timespec="seconds")) for row in sample_suppliers],
+        )
 
-    c.commit()
-    c.close()
+    conn.commit()
+    conn.close()
 
 
 def load_settings():
-    return pd.read_sql_query("SELECT * FROM settings WHERE id=1", conn()).iloc[0].to_dict()
+    return pd.read_sql_query(
+        "SELECT * FROM settings WHERE id=1", get_conn()
+    ).iloc[0].to_dict()
 
 
-def save_settings(s):
-    c = conn()
-    c.execute("""
-    UPDATE settings SET
-    nalco_base=?,ie07=?,freight=?,handling=?,gst=?,monthly_requirement=?,
-    current_stock=?,safety_stock=?,open_po=?,min_cover=?,comfort_cover=?,
-    max_booking_pct=?,forecast_trigger=? WHERE id=1
-    """, (
-        s["nalco_base"],s["ie07"],s["freight"],s["handling"],s["gst"],
-        s["monthly_requirement"],s["current_stock"],s["safety_stock"],s["open_po"],
-        s["min_cover"],s["comfort_cover"],s["max_booking_pct"],s["forecast_trigger"]
-    ))
-    c.commit()
-    c.close()
+def save_settings(values):
+    conn = get_conn()
+    conn.execute(
+        """
+        UPDATE settings SET
+            nalco_base=?,ie07=?,freight=?,handling=?,gst=?,
+            monthly_requirement=?,current_stock=?,safety_stock=?,open_po=?,
+            min_cover=?,comfort_cover=?,max_booking_pct=?,forecast_trigger=?
+        WHERE id=1
+        """,
+        (
+            values["nalco_base"],
+            values["ie07"],
+            values["freight"],
+            values["handling"],
+            values["gst"],
+            values["monthly_requirement"],
+            values["current_stock"],
+            values["safety_stock"],
+            values["open_po"],
+            values["min_cover"],
+            values["comfort_cover"],
+            values["max_booking_pct"],
+            values["forecast_trigger"],
+        ),
+    )
+    conn.commit()
+    conn.close()
 
 
 def load_history():
-    df = pd.read_sql_query("SELECT * FROM rate_history ORDER BY effective_date", conn())
+    df = pd.read_sql_query(
+        "SELECT * FROM rate_history ORDER BY effective_date, id", get_conn()
+    )
     if not df.empty:
         df["effective_date"] = pd.to_datetime(df["effective_date"])
         df["composite"] = df["nalco_base"] + df["ie07"]
@@ -147,250 +190,832 @@ def load_history():
 
 
 def load_suppliers():
-    return pd.read_sql_query("SELECT * FROM suppliers ORDER BY supplier", conn())
+    return pd.read_sql_query(
+        "SELECT * FROM suppliers ORDER BY supplier, id", get_conn()
+    )
 
 
-def round_half(x):
-    return round(x * 2) / 2
+def round_half(value):
+    return round(value * 2) / 2
 
 
-def forecast_model(s, h, weeks=5):
-    current = float(s["nalco_base"] + s["ie07"])
-    recent = h.tail(6).copy()
+def generate_forecast(settings, history, weeks=5):
+    current = float(settings["nalco_base"] + settings["ie07"])
+
+    if len(history) < 3:
+        raise ValueError("At least three Rate History records are required.")
+
+    recent = history.tail(6).copy()
     changes = recent["composite"].diff().dropna()
-    avg_change = float(changes.mean()) if len(changes) else 0
-    avg_abs = max(float(changes.abs().mean()) if len(changes) else 1, 1)
+    average_change = float(changes.mean()) if len(changes) else 0.0
+    average_absolute_change = max(
+        float(changes.abs().mean()) if len(changes) else 1.0,
+        1.0,
+    )
 
-    lme_effect = 0
-    lme_vals = recent["lme"].dropna()
-    if len(lme_vals) >= 2 and lme_vals.iloc[-2] != 0:
-        lme_effect = ((lme_vals.iloc[-1]-lme_vals.iloc[-2])/lme_vals.iloc[-2])*100*0.18
+    lme_effect = 0.0
+    lme_values = recent["lme"].dropna()
+    if len(lme_values) >= 2 and lme_values.iloc[-2] != 0:
+        lme_effect = (
+            (lme_values.iloc[-1] - lme_values.iloc[-2])
+            / lme_values.iloc[-2]
+            * 100
+            * 0.18
+        )
 
-    fx_effect = 0
-    fx_vals = recent["usd_inr"].dropna()
-    if len(fx_vals) >= 2 and fx_vals.iloc[-2] != 0:
-        fx_effect = ((fx_vals.iloc[-1]-fx_vals.iloc[-2])/fx_vals.iloc[-2])*100*0.12
+    fx_effect = 0.0
+    fx_values = recent["usd_inr"].dropna()
+    if len(fx_values) >= 2 and fx_values.iloc[-2] != 0:
+        fx_effect = (
+            (fx_values.iloc[-1] - fx_values.iloc[-2])
+            / fx_values.iloc[-2]
+            * 100
+            * 0.12
+        )
 
-    drift = round_half(float(np.clip(avg_change*0.55 + lme_effect + fx_effect, -6, 6)))
+    weekly_drift = round_half(
+        float(
+            np.clip(
+                average_change * 0.55 + lme_effect + fx_effect,
+                -6,
+                6,
+            )
+        )
+    )
+
     monday = date.today() - timedelta(days=date.today().weekday())
-
-    daily = s["monthly_requirement"]/30 if s["monthly_requirement"] else 0
-    cover = (s["current_stock"]+s["open_po"])/daily if daily else 0
+    daily_consumption = (
+        settings["monthly_requirement"] / 30
+        if settings["monthly_requirement"]
+        else 0
+    )
+    stock_cover = (
+        (settings["current_stock"] + settings["open_po"]) / daily_consumption
+        if daily_consumption
+        else 0
+    )
 
     rows = []
-    for i in range(1, weeks+1):
-        expected = round_half(current + drift*i + avg_change*0.15*(i-1))
-        low = round_half(expected - avg_abs*(0.8+i*0.2))
-        high = round_half(expected + avg_abs*(0.8+i*0.2))
-        change = expected-current
-        confidence = abs(drift)/max(avg_abs,1) - (i-1)*0.12
-        probability = "High" if confidence >= 1.5 else "Medium-High" if confidence >= .8 else "Medium" if confidence >= .3 else "Low"
+    for week_number in range(1, weeks + 1):
+        expected = round_half(
+            current
+            + weekly_drift * week_number
+            + average_change * 0.15 * (week_number - 1)
+        )
+        low_case = round_half(
+            expected
+            - average_absolute_change * (0.8 + week_number * 0.2)
+        )
+        high_case = round_half(
+            expected
+            + average_absolute_change * (0.8 + week_number * 0.2)
+        )
+        expected_change = expected - current
 
-        if cover < s["min_cover"]:
+        confidence = (
+            abs(weekly_drift) / max(average_absolute_change, 1)
+            - (week_number - 1) * 0.12
+        )
+        if confidence >= 1.5:
+            probability = "High"
+        elif confidence >= 0.8:
+            probability = "Medium-High"
+        elif confidence >= 0.3:
+            probability = "Medium"
+        else:
+            probability = "Low"
+
+        if stock_cover < settings["min_cover"]:
             action = "BUY NOW – LOW STOCK"
-        elif change >= s["forecast_trigger"]:
+        elif expected_change >= settings["forecast_trigger"]:
             action = "BUY / LOCK 50–70%"
-        elif low < current-2:
+        elif low_case < current - 2:
             action = "WAIT FOR LOWER RATE"
-        elif change > 0:
+        elif expected_change > 0:
             action = "BUY 25–40% GRADUALLY"
         else:
             action = "HOLD / BUY AS REQUIRED"
 
-        ws = monday + timedelta(days=(i-1)*7)
-        rows.append({
-            "Week Start": ws,
-            "Week End": ws+timedelta(days=6),
-            "Expected NALCO": expected-s["ie07"],
-            "Expected IE-07": s["ie07"],
-            "Expected Composite": expected,
-            "Low": low,
-            "High": high,
-            "Expected Change": change,
-            "Probability": probability,
-            "Action": action,
-            "Remarks": f"Trend {avg_change:.2f}; LME {lme_effect:.2f}; FX {fx_effect:.2f}"
-        })
-    return pd.DataFrame(rows), drift
+        week_start = monday + timedelta(days=(week_number - 1) * 7)
+
+        rows.append(
+            {
+                "Week Start": week_start,
+                "Week End": week_start + timedelta(days=6),
+                "Expected NALCO": expected - settings["ie07"],
+                "Expected IE-07": settings["ie07"],
+                "Expected Composite": expected,
+                "Low": low_case,
+                "High": high_case,
+                "Expected Change": expected_change,
+                "Probability": probability,
+                "Action": action,
+                "Remarks": (
+                    f"Trend {average_change:.2f}; "
+                    f"LME effect {lme_effect:.2f}; "
+                    f"FX effect {fx_effect:.2f}"
+                ),
+            }
+        )
+
+    return pd.DataFrame(rows), weekly_drift
 
 
-def metrics(s, f, h):
-    composite = s["nalco_base"]+s["ie07"]
-    taxable = composite+s["freight"]+s["handling"]
-    landed = taxable*(1+s["gst"]/100)
-    daily = s["monthly_requirement"]/30 if s["monthly_requirement"] else 0
-    available = s["current_stock"]+s["open_po"]
-    cover = available/daily if daily else 0
-    net_qty = max(0, s["monthly_requirement"]+s["safety_stock"]-available)
-    suggested = min(net_qty, s["max_booking_pct"]/100*s["monthly_requirement"])
-    avg4 = h["composite"].tail(4).mean() if not h.empty else composite
-    next_change = f["Expected Change"].head(2).mean()
+def calculate_metrics(settings, forecast, history):
+    composite = settings["nalco_base"] + settings["ie07"]
+    taxable = composite + settings["freight"] + settings["handling"]
+    landed = taxable * (1 + settings["gst"] / 100)
 
-    if cover < s["min_cover"]:
-        return composite, landed, cover, net_qty, suggested, "BUY NOW – LOW STOCK", "buy"
-    if next_change >= s["forecast_trigger"]:
-        return composite, landed, cover, net_qty, suggested, "BUY / LOCK RATE", "buy"
-    if composite > avg4 + 2:
-        return composite, landed, cover, net_qty, suggested, "WAIT / BUY MINIMUM", "wait"
-    return composite, landed, cover, net_qty, suggested, "HOLD / STAGGER BUY", "hold"
+    daily_consumption = (
+        settings["monthly_requirement"] / 30
+        if settings["monthly_requirement"]
+        else 0
+    )
+    available = settings["current_stock"] + settings["open_po"]
+    cover = available / daily_consumption if daily_consumption else 0
+
+    net_qty = max(
+        0,
+        settings["monthly_requirement"]
+        + settings["safety_stock"]
+        - available,
+    )
+    suggested_qty = min(
+        net_qty,
+        settings["max_booking_pct"]
+        / 100
+        * settings["monthly_requirement"],
+    )
+
+    average_four = (
+        history["composite"].tail(4).mean()
+        if not history.empty
+        else composite
+    )
+    next_change = forecast["Expected Change"].head(2).mean()
+
+    if cover < settings["min_cover"]:
+        return (
+            composite,
+            landed,
+            cover,
+            net_qty,
+            suggested_qty,
+            "BUY NOW – LOW STOCK",
+            "buy",
+        )
+
+    if next_change >= settings["forecast_trigger"]:
+        return (
+            composite,
+            landed,
+            cover,
+            net_qty,
+            suggested_qty,
+            "BUY / LOCK RATE",
+            "buy",
+        )
+
+    if composite > average_four + 2:
+        return (
+            composite,
+            landed,
+            cover,
+            net_qty,
+            suggested_qty,
+            "WAIT / BUY MINIMUM",
+            "wait",
+        )
+
+    return (
+        composite,
+        landed,
+        cover,
+        net_qty,
+        suggested_qty,
+        "HOLD / STAGGER BUY",
+        "hold",
+    )
 
 
-def export_excel(s,h,f,sup):
-    b = io.BytesIO()
-    with pd.ExcelWriter(b, engine="openpyxl") as w:
-        pd.DataFrame([s]).to_excel(w, sheet_name="Inputs", index=False)
-        h.to_excel(w, sheet_name="Rate History", index=False)
-        f.to_excel(w, sheet_name="Forecast", index=False)
-        sup.to_excel(w, sheet_name="Suppliers", index=False)
-    return b.getvalue()
+def export_excel(settings, history, forecast, suppliers):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame([settings]).to_excel(
+            writer, sheet_name="Inputs", index=False
+        )
+        history.to_excel(
+            writer, sheet_name="Rate History", index=False
+        )
+        forecast.to_excel(
+            writer, sheet_name="Forecast", index=False
+        )
+        suppliers.to_excel(
+            writer, sheet_name="Suppliers", index=False
+        )
+    return output.getvalue()
 
 
 init_db()
-s = load_settings()
-h = load_history()
-f, drift = forecast_model(s,h)
-sup = load_suppliers()
-composite, landed, cover, net_qty, suggested, decision, cls = metrics(s,f,h)
 
-st.markdown('<div class="titlebar">ELECTRO-DIP | NALCO + IE-07 Aluminium Procurement</div>', unsafe_allow_html=True)
+settings = load_settings()
+history = load_history()
+suppliers = load_suppliers()
+forecast, drift = generate_forecast(settings, history)
 
-tabs = st.tabs(["Dashboard","Inputs","Rate History","Automatic Forecast","Suppliers","Export"])
+(
+    composite,
+    landed,
+    cover,
+    net_qty,
+    suggested_qty,
+    decision,
+    decision_class,
+) = calculate_metrics(settings, forecast, history)
+
+st.markdown(
+    '<div class="titlebar">ELECTRO-DIP | NALCO + IE-07 Aluminium Procurement</div>',
+    unsafe_allow_html=True,
+)
+
+tabs = st.tabs(
+    [
+        "Dashboard",
+        "Inputs",
+        "Rate History",
+        "Automatic Forecast",
+        "Suppliers",
+        "Export",
+    ]
+)
 
 with tabs[0]:
-    c1,c2,c3,c4 = st.columns(4)
-    c1.markdown(f'<div class="kpi"><div class="kpi-label">Current Composite</div><div class="kpi-value">₹{composite:,.2f}/kg</div></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="kpi"><div class="kpi-label">Landed Rate incl. GST</div><div class="kpi-value">₹{landed:,.2f}/kg</div></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="kpi"><div class="kpi-label">Stock Cover</div><div class="kpi-value">{cover:,.1f} days</div></div>', unsafe_allow_html=True)
-    c4.markdown(f'<div class="kpi"><div class="kpi-label">Net Qty to Buy</div><div class="kpi-value">{net_qty:,.0f} kg</div></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="{cls}"><b>Recommendation:</b> {decision}<br><b>Suggested booking:</b> {suggested:,.0f} kg<br><b>Forecast drift:</b> ₹{drift:,.2f}/kg per week</div>', unsafe_allow_html=True)
+    col1, col2, col3, col4 = st.columns(4)
 
-    left,right = st.columns([1.4,1])
+    col1.markdown(
+        f"""
+        <div class="kpi">
+            <div class="kpi-label">Current Composite</div>
+            <div class="kpi-value">₹{composite:,.2f}/kg</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col2.markdown(
+        f"""
+        <div class="kpi">
+            <div class="kpi-label">Landed Rate incl. GST</div>
+            <div class="kpi-value">₹{landed:,.2f}/kg</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col3.markdown(
+        f"""
+        <div class="kpi">
+            <div class="kpi-label">Stock Cover</div>
+            <div class="kpi-value">{cover:,.1f} days</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col4.markdown(
+        f"""
+        <div class="kpi">
+            <div class="kpi-label">Net Qty to Buy</div>
+            <div class="kpi-value">{net_qty:,.0f} kg</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div class="{decision_class}">
+            <b>Recommendation:</b> {decision}<br>
+            <b>Suggested booking:</b> {suggested_qty:,.0f} kg<br>
+            <b>Forecast drift:</b> ₹{drift:,.2f}/kg per week
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    left, right = st.columns([1.4, 1])
+
     with left:
         st.subheader("Composite Rate Trend")
-        st.line_chart(h.set_index("effective_date")[["composite"]])
+        st.line_chart(
+            history.set_index("effective_date")[["composite"]]
+        )
+
     with right:
         st.subheader("Next Five Weeks")
-        st.dataframe(f[["Week Start","Expected Composite","Low","High","Action"]], use_container_width=True, hide_index=True)
+        st.dataframe(
+            forecast[
+                [
+                    "Week Start",
+                    "Expected Composite",
+                    "Low",
+                    "High",
+                    "Action",
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
 
 with tabs[1]:
-    with st.form("settings"):
-        c1,c2,c3 = st.columns(3)
-        vals = {}
-        with c1:
-            vals["nalco_base"] = st.number_input("NALCO Base ₹/kg", value=float(s["nalco_base"]), step=0.5)
-            vals["ie07"] = st.number_input("IE-07 ₹/kg", value=float(s["ie07"]), step=0.5)
-            vals["freight"] = st.number_input("Freight ₹/kg", value=float(s["freight"]), step=0.1)
-            vals["handling"] = st.number_input("Handling ₹/kg", value=float(s["handling"]), step=0.1)
-            vals["gst"] = st.number_input("GST %", value=float(s["gst"]), min_value=0.0, max_value=100.0)
-        with c2:
-            vals["monthly_requirement"] = st.number_input("Monthly Requirement kg", value=float(s["monthly_requirement"]), step=100.0)
-            vals["current_stock"] = st.number_input("Current Stock kg", value=float(s["current_stock"]), step=100.0)
-            vals["safety_stock"] = st.number_input("Safety Stock kg", value=float(s["safety_stock"]), step=100.0)
-            vals["open_po"] = st.number_input("Open PO kg", value=float(s["open_po"]), step=100.0)
-        with c3:
-            vals["min_cover"] = st.number_input("Minimum Cover days", value=float(s["min_cover"]))
-            vals["comfort_cover"] = st.number_input("Comfort Cover days", value=float(s["comfort_cover"]))
-            vals["max_booking_pct"] = st.number_input("Maximum Booking %", value=float(s["max_booking_pct"]), min_value=0.0, max_value=100.0)
-            vals["forecast_trigger"] = st.number_input("Forecast Trigger ₹/kg", value=float(s["forecast_trigger"]), step=0.5)
+    st.subheader("Master Inputs")
+
+    with st.form("settings_form"):
+        col1, col2, col3 = st.columns(3)
+        values = {}
+
+        with col1:
+            values["nalco_base"] = st.number_input(
+                "NALCO Base ₹/kg",
+                value=float(settings["nalco_base"]),
+                step=0.5,
+            )
+            values["ie07"] = st.number_input(
+                "IE-07 ₹/kg",
+                value=float(settings["ie07"]),
+                step=0.5,
+            )
+            values["freight"] = st.number_input(
+                "Freight ₹/kg",
+                value=float(settings["freight"]),
+                step=0.1,
+            )
+            values["handling"] = st.number_input(
+                "Handling ₹/kg",
+                value=float(settings["handling"]),
+                step=0.1,
+            )
+            values["gst"] = st.number_input(
+                "GST %",
+                value=float(settings["gst"]),
+                min_value=0.0,
+                max_value=100.0,
+            )
+
+        with col2:
+            values["monthly_requirement"] = st.number_input(
+                "Monthly Requirement kg",
+                value=float(settings["monthly_requirement"]),
+                min_value=0.0,
+                step=100.0,
+            )
+            values["current_stock"] = st.number_input(
+                "Current Stock kg",
+                value=float(settings["current_stock"]),
+                min_value=0.0,
+                step=100.0,
+            )
+            values["safety_stock"] = st.number_input(
+                "Safety Stock kg",
+                value=float(settings["safety_stock"]),
+                min_value=0.0,
+                step=100.0,
+            )
+            values["open_po"] = st.number_input(
+                "Open PO kg",
+                value=float(settings["open_po"]),
+                min_value=0.0,
+                step=100.0,
+            )
+
+        with col3:
+            values["min_cover"] = st.number_input(
+                "Minimum Cover days",
+                value=float(settings["min_cover"]),
+                min_value=0.0,
+            )
+            values["comfort_cover"] = st.number_input(
+                "Comfort Cover days",
+                value=float(settings["comfort_cover"]),
+                min_value=0.0,
+            )
+            values["max_booking_pct"] = st.number_input(
+                "Maximum Booking %",
+                value=float(settings["max_booking_pct"]),
+                min_value=0.0,
+                max_value=100.0,
+            )
+            values["forecast_trigger"] = st.number_input(
+                "Forecast Trigger ₹/kg",
+                value=float(settings["forecast_trigger"]),
+                min_value=0.0,
+                step=0.5,
+            )
+
         if st.form_submit_button("Save Inputs", type="primary"):
-            save_settings(vals)
-            st.success("Inputs saved.")
+            save_settings(values)
+            st.success("Inputs saved successfully.")
             st.rerun()
 
 with tabs[2]:
     st.subheader("NALCO / IE-07 Rate History")
-    add_tab, delete_tab = st.tabs(["Add Revision", "Delete Revision"])
+
+    add_tab, edit_tab, delete_tab = st.tabs(
+        ["Add Revision", "Edit Revision", "Delete Revision"]
+    )
 
     with add_tab:
-        with st.form("history"):
-            c1,c2,c3,c4 = st.columns(4)
-            d = c1.date_input("Effective Date", value=date.today())
-            nb = c2.number_input("NALCO Base", value=float(s["nalco_base"]), step=0.5)
-            ie = c3.number_input("IE-07", value=float(s["ie07"]), step=0.5)
-            lme = c4.number_input("LME US$/MT", value=float(h["lme"].dropna().iloc[-1]) if h["lme"].notna().any() else 0.0)
-            c5,c6,c7 = st.columns(3)
-            fx = c5.number_input("USD/INR", value=float(h["usd_inr"].dropna().iloc[-1]) if h["usd_inr"].notna().any() else 0.0)
-            reason = c6.text_input("Reason / Circular")
-            source = c7.text_input("Source / Reference")
-            entered = st.text_input("Entered By")
-            if st.form_submit_button("Add Revision", type="primary"):
-                c = conn()
-                c.execute("""
-                INSERT INTO rate_history(effective_date,nalco_base,ie07,lme,usd_inr,reason,source_ref,entered_by,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?)
-                """,(d.isoformat(),nb,ie,lme,fx,reason,source,entered,datetime.now().isoformat(timespec="seconds")))
-                c.commit(); c.close()
-                st.success("Revision added.")
+        with st.form("add_revision_form"):
+            col1, col2, col3, col4 = st.columns(4)
+
+            effective_date = col1.date_input(
+                "Effective Date",
+                value=date.today(),
+            )
+            nalco_base = col2.number_input(
+                "NALCO Base",
+                value=float(settings["nalco_base"]),
+                step=0.5,
+            )
+            ie07 = col3.number_input(
+                "IE-07",
+                value=float(settings["ie07"]),
+                step=0.5,
+            )
+            lme = col4.number_input(
+                "LME US$/MT",
+                value=(
+                    float(history["lme"].dropna().iloc[-1])
+                    if history["lme"].notna().any()
+                    else 0.0
+                ),
+            )
+
+            col5, col6, col7 = st.columns(3)
+
+            usd_inr = col5.number_input(
+                "USD/INR",
+                value=(
+                    float(history["usd_inr"].dropna().iloc[-1])
+                    if history["usd_inr"].notna().any()
+                    else 0.0
+                ),
+            )
+            reason = col6.text_input("Reason / Circular")
+            source_ref = col7.text_input("Source / Reference")
+            entered_by = st.text_input("Entered By")
+
+            if st.form_submit_button(
+                "Add Revision",
+                type="primary",
+            ):
+                conn = get_conn()
+                conn.execute(
+                    """
+                    INSERT INTO rate_history(
+                        effective_date,nalco_base,ie07,lme,usd_inr,
+                        reason,source_ref,entered_by,created_at
+                    )
+                    VALUES(?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        effective_date.isoformat(),
+                        nalco_base,
+                        ie07,
+                        lme,
+                        usd_inr,
+                        reason,
+                        source_ref,
+                        entered_by,
+                        datetime.now().isoformat(timespec="seconds"),
+                    ),
+                )
+                conn.commit()
+                conn.close()
+                st.success("Revision added successfully.")
                 st.rerun()
 
-    with delete_tab:
-        if h.empty:
-            st.info("No revision records are available.")
-        else:
-            delete_options = {}
-            for _, row in h.sort_values("effective_date", ascending=False).iterrows():
-                label = (f'{row["effective_date"].date()} | NALCO ₹{row["nalco_base"]:.2f} | '
-                         f'IE-07 ₹{row["ie07"]:.2f} | Composite ₹{row["composite"]:.2f} | ID {int(row["id"])}')
-                delete_options[label] = int(row["id"])
-            selected_label = st.selectbox("Select the revision to delete", list(delete_options.keys()))
-            selected_id = delete_options[selected_label]
-            selected_row = h.loc[h["id"] == selected_id].iloc[0]
-            st.warning(
-                f"Selected record:
-
-**Date:** {selected_row['effective_date'].date()}  
-"
-                f"**NALCO:** ₹{selected_row['nalco_base']:.2f}/kg  
-"
-                f"**IE-07:** ₹{selected_row['ie07']:.2f}/kg  
-"
-                f"**Composite:** ₹{selected_row['composite']:.2f}/kg"
+    if history.empty:
+        with edit_tab:
+            st.info("No records are available to edit.")
+        with delete_tab:
+            st.info("No records are available to delete.")
+    else:
+        record_options = {}
+        for _, row in history.sort_values(
+            "effective_date",
+            ascending=False,
+        ).iterrows():
+            label = (
+                f"{row['effective_date'].date()} | "
+                f"NALCO ₹{row['nalco_base']:.2f} | "
+                f"IE-07 ₹{row['ie07']:.2f} | "
+                f"Composite ₹{row['composite']:.2f} | "
+                f"ID {int(row['id'])}"
             )
-            confirm_delete = st.checkbox("I confirm that this revision should be permanently deleted.")
-            if st.button("Delete Selected Revision", type="primary", disabled=not confirm_delete):
-                c = conn()
-                c.execute("DELETE FROM rate_history WHERE id=?", (selected_id,))
-                c.commit(); c.close()
+            record_options[label] = int(row["id"])
+
+        with edit_tab:
+            selected_edit_label = st.selectbox(
+                "Select revision to edit",
+                options=list(record_options.keys()),
+                key="edit_record",
+            )
+            selected_edit_id = record_options[selected_edit_label]
+            selected_edit_row = history.loc[
+                history["id"] == selected_edit_id
+            ].iloc[0]
+
+            with st.form("edit_revision_form"):
+                col1, col2, col3, col4 = st.columns(4)
+
+                edited_date = col1.date_input(
+                    "Effective Date",
+                    value=selected_edit_row["effective_date"].date(),
+                    key="edited_date",
+                )
+                edited_nalco = col2.number_input(
+                    "NALCO Base",
+                    value=float(selected_edit_row["nalco_base"]),
+                    step=0.5,
+                    key="edited_nalco",
+                )
+                edited_ie07 = col3.number_input(
+                    "IE-07",
+                    value=float(selected_edit_row["ie07"]),
+                    step=0.5,
+                    key="edited_ie07",
+                )
+                edited_lme = col4.number_input(
+                    "LME US$/MT",
+                    value=float(selected_edit_row["lme"] or 0),
+                    key="edited_lme",
+                )
+
+                col5, col6, col7 = st.columns(3)
+
+                edited_usd = col5.number_input(
+                    "USD/INR",
+                    value=float(selected_edit_row["usd_inr"] or 0),
+                    key="edited_usd",
+                )
+                edited_reason = col6.text_input(
+                    "Reason / Circular",
+                    value=str(selected_edit_row["reason"] or ""),
+                    key="edited_reason",
+                )
+                edited_source = col7.text_input(
+                    "Source / Reference",
+                    value=str(selected_edit_row["source_ref"] or ""),
+                    key="edited_source",
+                )
+                edited_by = st.text_input(
+                    "Entered By",
+                    value=str(selected_edit_row["entered_by"] or ""),
+                    key="edited_by",
+                )
+
+                if st.form_submit_button(
+                    "Save Changes",
+                    type="primary",
+                ):
+                    conn = get_conn()
+                    conn.execute(
+                        """
+                        UPDATE rate_history SET
+                            effective_date=?,
+                            nalco_base=?,
+                            ie07=?,
+                            lme=?,
+                            usd_inr=?,
+                            reason=?,
+                            source_ref=?,
+                            entered_by=?
+                        WHERE id=?
+                        """,
+                        (
+                            edited_date.isoformat(),
+                            edited_nalco,
+                            edited_ie07,
+                            edited_lme,
+                            edited_usd,
+                            edited_reason,
+                            edited_source,
+                            edited_by,
+                            selected_edit_id,
+                        ),
+                    )
+                    conn.commit()
+                    conn.close()
+                    st.success("Revision updated successfully.")
+                    st.rerun()
+
+        with delete_tab:
+            selected_delete_label = st.selectbox(
+                "Select revision to delete",
+                options=list(record_options.keys()),
+                key="delete_record",
+            )
+            selected_delete_id = record_options[selected_delete_label]
+            selected_delete_row = history.loc[
+                history["id"] == selected_delete_id
+            ].iloc[0]
+
+            st.warning(
+                f"""
+Selected record:
+
+**Date:** {selected_delete_row['effective_date'].date()}  
+**NALCO:** ₹{selected_delete_row['nalco_base']:.2f}/kg  
+**IE-07:** ₹{selected_delete_row['ie07']:.2f}/kg  
+**Composite:** ₹{selected_delete_row['composite']:.2f}/kg  
+**Record ID:** {int(selected_delete_row['id'])}
+                """
+            )
+
+            confirm_delete = st.checkbox(
+                "I confirm that this revision should be permanently deleted.",
+                key="confirm_delete",
+            )
+
+            if st.button(
+                "Delete Selected Revision",
+                type="primary",
+                disabled=not confirm_delete,
+            ):
+                conn = get_conn()
+                conn.execute(
+                    "DELETE FROM rate_history WHERE id=?",
+                    (selected_delete_id,),
+                )
+                conn.commit()
+                conn.close()
                 st.success("Revision deleted successfully.")
                 st.rerun()
 
-    show = h.copy()
-    show["effective_date"] = show["effective_date"].dt.date
-    st.dataframe(show[["id","effective_date","nalco_base","ie07","composite","change","lme","usd_inr","reason","source_ref","entered_by"]],
-                 use_container_width=True, hide_index=True)
+    st.divider()
+
+    search_text = st.text_input(
+        "Search Rate History",
+        placeholder="Search date, reason, reference or entered-by name",
+    )
+
+    display_history = history.copy()
+
+    if search_text.strip():
+        search_value = search_text.strip().lower()
+        mask = (
+            display_history["effective_date"]
+            .dt.strftime("%Y-%m-%d")
+            .str.lower()
+            .str.contains(search_value, na=False)
+            |
+            display_history["reason"]
+            .fillna("")
+            .str.lower()
+            .str.contains(search_value, na=False)
+            |
+            display_history["source_ref"]
+            .fillna("")
+            .str.lower()
+            .str.contains(search_value, na=False)
+            |
+            display_history["entered_by"]
+            .fillna("")
+            .str.lower()
+            .str.contains(search_value, na=False)
+        )
+        display_history = display_history.loc[mask]
+
+    display_history["effective_date"] = (
+        display_history["effective_date"].dt.date
+    )
+
+    st.dataframe(
+        display_history[
+            [
+                "id",
+                "effective_date",
+                "nalco_base",
+                "ie07",
+                "composite",
+                "change",
+                "lme",
+                "usd_inr",
+                "reason",
+                "source_ref",
+                "entered_by",
+            ]
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
 
 with tabs[3]:
-    st.metric("Calculated Weekly Drift", f"₹{drift:,.2f}/kg")
-    st.dataframe(f, use_container_width=True, hide_index=True)
-    st.caption("This is planning guidance and not a guaranteed market price.")
+    st.subheader("Automatically Generated Weekly Forecast")
+    st.metric(
+        "Calculated Weekly Drift",
+        f"₹{drift:,.2f}/kg",
+    )
+    st.dataframe(
+        forecast,
+        use_container_width=True,
+        hide_index=True,
+    )
+    st.caption(
+        "Forecast is procurement-planning guidance and not a guaranteed market price."
+    )
 
 with tabs[4]:
-    with st.form("supplier"):
-        c1,c2,c3,c4,c5 = st.columns(5)
-        name = c1.text_input("Supplier")
-        qb = c2.number_input("Quoted Base", value=float(s["nalco_base"]), step=0.5)
-        sie = c3.number_input("IE-07", value=float(s["ie07"]), step=0.5)
-        fr = c4.number_input("Freight", value=0.0, step=0.1)
-        oth = c5.number_input("Other Charges", value=0.0, step=0.1)
-        if st.form_submit_button("Add Supplier Quote") and name.strip():
-            c = conn()
-            c.execute("""INSERT INTO suppliers(supplier,quoted_base,ie07,freight,other,updated_at)
-                         VALUES(?,?,?,?,?,?)""",
-                      (name.strip(),qb,sie,fr,oth,datetime.now().isoformat(timespec="seconds")))
-            c.commit(); c.close()
-            st.success("Supplier quote added.")
-            st.rerun()
-    sv = sup.copy()
-    sv["Landed Before GST"] = sv["quoted_base"]+sv["ie07"]+sv["freight"]+sv["other"]
-    sv["Landed incl. GST"] = sv["Landed Before GST"]*(1+s["gst"]/100)
-    st.dataframe(sv, use_container_width=True, hide_index=True)
+    st.subheader("Supplier Comparison")
+
+    with st.form("supplier_form"):
+        col1, col2, col3, col4, col5 = st.columns(5)
+
+        supplier_name = col1.text_input("Supplier")
+        quoted_base = col2.number_input(
+            "Quoted Base",
+            value=float(settings["nalco_base"]),
+            step=0.5,
+        )
+        supplier_ie07 = col3.number_input(
+            "IE-07",
+            value=float(settings["ie07"]),
+            step=0.5,
+        )
+        supplier_freight = col4.number_input(
+            "Freight",
+            value=0.0,
+            step=0.1,
+        )
+        supplier_other = col5.number_input(
+            "Other Charges",
+            value=0.0,
+            step=0.1,
+        )
+
+        if st.form_submit_button("Add Supplier Quote"):
+            if not supplier_name.strip():
+                st.error("Enter the supplier name.")
+            else:
+                conn = get_conn()
+                conn.execute(
+                    """
+                    INSERT INTO suppliers(
+                        supplier,quoted_base,ie07,freight,other,updated_at
+                    )
+                    VALUES(?,?,?,?,?,?)
+                    """,
+                    (
+                        supplier_name.strip(),
+                        quoted_base,
+                        supplier_ie07,
+                        supplier_freight,
+                        supplier_other,
+                        datetime.now().isoformat(timespec="seconds"),
+                    ),
+                )
+                conn.commit()
+                conn.close()
+                st.success("Supplier quote added successfully.")
+                st.rerun()
+
+    supplier_view = suppliers.copy()
+    supplier_view["Landed Before GST"] = (
+        supplier_view["quoted_base"]
+        + supplier_view["ie07"]
+        + supplier_view["freight"]
+        + supplier_view["other"]
+    )
+    supplier_view["Landed incl. GST"] = (
+        supplier_view["Landed Before GST"]
+        * (1 + settings["gst"] / 100)
+    )
+
+    st.dataframe(
+        supplier_view,
+        use_container_width=True,
+        hide_index=True,
+    )
 
 with tabs[5]:
+    st.subheader("Export Management Data")
+
     st.download_button(
         "Download Complete Excel Report",
-        export_excel(s,h,f,sup),
-        file_name=f"Electro_Dip_Aluminium_Report_{date.today().isoformat()}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        type="primary"
+        export_excel(
+            settings,
+            history,
+            forecast,
+            suppliers,
+        ),
+        file_name=(
+            f"Electro_Dip_Aluminium_Report_"
+            f"{date.today().isoformat()}.xlsx"
+        ),
+        mime=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        ),
+        type="primary",
     )
-    st.info("For online deployment, upload this app to Streamlit Community Cloud, Render, Railway, or your company server.")
